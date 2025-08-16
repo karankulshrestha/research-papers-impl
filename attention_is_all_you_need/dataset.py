@@ -7,13 +7,15 @@ class LMWindowDataset(Dataset):
     Produces (x, y) pairs for autoregressive LM training.
     Each sample: x (block_size tokens), y (block_size tokens shifted by 1)
     Pads the last window with pad_index when needed.
+    Optimized for memory efficiency and better training coverage.
     """
 
     def __init__(self, token_ids: list, block_size: int, pad_index: int, stride: int = None):
         self.tokens = token_ids
         self.block_size = block_size
         self.pad_index = pad_index
-        self.stride = stride if stride is not None else max(1, block_size // 2)  # Use half block size as stride for better coverage
+        # Use smaller stride for better data coverage
+        self.stride = stride if stride is not None else max(1, block_size // 4)
         self.windows = []
         n = len(self.tokens)
 
@@ -22,16 +24,23 @@ class LMWindowDataset(Dataset):
             w = [self.pad_index] * pad_needed
             self.windows.append(w)
         else:
-            for i in range(0, max(1, n - 1), self.stride):
+            # Create overlapping windows for better training
+            for i in range(0, max(1, n - block_size), self.stride):
                 chunk = self.tokens[i:i + block_size + 1]
+                if len(chunk) < block_size + 1:
+                    # Pad the last chunk if needed
+                    chunk = chunk + [self.pad_index] * (block_size + 1 - len(chunk))
+                self.windows.append(chunk)
+            
+            # Ensure we have at least one complete window
+            if len(self.windows) == 0:
+                chunk = self.tokens[:block_size + 1]
                 if len(chunk) < block_size + 1:
                     chunk = chunk + [self.pad_index] * (block_size + 1 - len(chunk))
                 self.windows.append(chunk)
 
-        if len(self.windows) == 0:
-            self.windows.append([self.pad_index] * (block_size + 1))
-
-        print(f"Created {len(self.windows)} training windows from {n} tokens")
+        print(f"Created {len(self.windows)} training windows from {n} tokens with stride {self.stride}")
+        print(f"Data coverage: {len(self.windows) * self.stride / max(1, n) * 100:.1f}%")
 
     def __len__(self):
         return len(self.windows)

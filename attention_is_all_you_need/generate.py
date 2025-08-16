@@ -5,7 +5,7 @@ from tokenizer import SimpleTokenizer
 from model import GPTModel
 
 OUT_DIR = "out"
-CKPT_PATH = os.path.join(OUT_DIR, "model_final.pt")
+CKPT_PATH = os.path.join(OUT_DIR, "model_epoch_last.pt")
 TOK_PATH = os.path.join(OUT_DIR, "tokenizer.json")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -35,6 +35,25 @@ def generate(model, tokenizer, prompt, max_new_tokens=40, temperature=1.0, top_k
             ids = torch.cat([ids, next_id], dim=1)
         return tokenizer.decode(ids[0].tolist())
 
+def load_model_state_dict(model, checkpoint_path):
+    """Load state dict handling both compiled and non-compiled models"""
+    state_dict = torch.load(checkpoint_path, map_location=DEVICE)
+    
+    # Check if this is a compiled model checkpoint (has _orig_mod. prefixes)
+    if any(key.startswith('_orig_mod.') for key in state_dict.keys()):
+        # Remove _orig_mod. prefix from all keys
+        new_state_dict = {}
+        for key, value in state_dict.items():
+            if key.startswith('_orig_mod.'):
+                new_key = key[len('_orig_mod.'):]
+                new_state_dict[new_key] = value
+            else:
+                new_state_dict[key] = value
+        state_dict = new_state_dict
+    
+    model.load_state_dict(state_dict)
+    return model
+
 def main():
     if not os.path.exists(CKPT_PATH):
         raise FileNotFoundError(f"Checkpoint not found at {CKPT_PATH}")
@@ -47,18 +66,20 @@ def main():
     # match the train-time hyperparams you used
     model = GPTModel(
         vocab_size=vocab_size,
-        d_model=256,
-        d_ff=1024,
+        d_model=512,
+        d_ff=2048,
         d_k=64,
         d_v=64,
-        n_heads=4,
-        n_layers=2,
+        n_heads=8,
+        n_layers=8,
         pad_index=tokenizer.stoi[tokenizer.pad_token],
         device=DEVICE)
-    model.load_state_dict(torch.load(CKPT_PATH, map_location=DEVICE))
+    
+    # Load model state dict with handling for compiled models
+    model = load_model_state_dict(model, CKPT_PATH)
     model.to(DEVICE)
 
-    prompt = "women"
+    prompt = "What happen with women"
     out = generate(model, tokenizer, prompt, max_new_tokens=80, temperature=1.0, top_k=40)
     print("=== SAMPLE ===")
     print(out)

@@ -12,17 +12,34 @@ class SimpleTokenizer:
 
     @staticmethod
     def _pretokenize(text: str):
-        tokens = re.findall(r"\w+|[^\s\w]", text, flags=re.UNICODE)
-        return tokens
+        # Better preprocessing for WikiText data
+        # Remove excessive whitespace and normalize
+        text = re.sub(r'\s+', ' ', text)
+        # Split on word boundaries and punctuation, preserve important tokens
+        tokens = re.findall(r"\b\w+\b|[.!?,:;'\"\-\(\)\[\]{}]", text, flags=re.UNICODE)
+        return [token.lower() for token in tokens if token.strip()]
 
     def build_vocab(self, texts: list, vocab_size=4000, min_freq=1):
+        print("Counting token frequencies...")
         counter = Counter()
-        for t in texts:
+        for i, t in enumerate(texts):
+            if i % 1000 == 0 and i > 0:
+                print(f"Processed {i} texts...")
             counter.update(self._pretokenize(t))
+        
+        print(f"Found {len(counter)} unique tokens before filtering")
         most_common = [tok for tok, cnt in counter.most_common(vocab_size) if cnt >= min_freq]
+        
+        # Add special tokens at the beginning
         vocab = [self.pad_token, self.unk_token] + most_common
+        
+        # Ensure we don't exceed vocab_size
+        if len(vocab) > vocab_size:
+            vocab = vocab[:vocab_size]
+            
         self.stoi = {tok: i for i, tok in enumerate(vocab)}
         self.itos = {i: tok for tok, i in self.stoi.items()}
+        print(f"Final vocabulary size: {len(self.stoi)}")
 
     def encode(self, text: str):
         toks = self._pretokenize(text)
