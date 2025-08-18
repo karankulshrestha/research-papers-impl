@@ -1,6 +1,7 @@
-from tokenizer import SimpleTokenizer
+import torch
 
-tok = SimpleTokenizer.load("out/tokenizer.json")
-ids = [tok.stoi.get("The",0), tok.stoi.get("history",0), tok.stoi.get("of",0), tok.stoi.get("artificial",0)]
-print("ids ->", ids)
-print("decoded:", tok.decode(ids))
+temp = torch.randn(10, 8)
+
+batch, size_k = temp.size()
+
+print(batch, size_k)

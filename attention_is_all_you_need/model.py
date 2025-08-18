@@ -54,7 +54,7 @@ class ScaledProductAttention(nn.Module):
             scores = scores.masked_fill(attention_mask, float('-inf'))
         scores = torch.softmax(scores, dim=-1)
         attention_output = scores @ V  # (batch, n_heads, seq_q, d_v)
-        return attention_output, scores
+        return attention_output, scores # shape: (batch, n_heads, seq_q, d_v), (batch, n_heads, seq_q, seq_k)
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, n_heads, d_k, d_v):
@@ -69,16 +69,17 @@ class MultiHeadAttention(nn.Module):
         self.d_k = d_k
         self.d_v = d_v
 
-    def forward(self, Q, K, V, attention_mask):
+    def forward(self, Q, K, V, attention_mask): # shape: (batch, seq_len, d_model), (batch, seq_len, d_model), (batch, seq_len, d_model), (batch, seq_len, seq_len)
         # Q, K, V: (batch, seq_len, d_model)
         batch_size = Q.size(0)
-        q_s = self.WQ(Q).view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)  # (batch, n_heads, seq, d_k)
+        q_s = self.WQ(Q).view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)  # (batch, seq_len, d_model) -> (batch, seq_len, n_heads, d_k) -> (batch, n_heads, seq_len, d_k)
         k_s = self.WK(K).view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)
         v_s = self.WV(V).view(batch_size, -1, self.n_heads, self.d_v).transpose(1, 2)
 
         # attention_mask: (batch, seq_q, seq_k) -> expand to (batch, n_heads, seq_q, seq_k)
         attn_mask = None
         if attention_mask is not None:
+            # shape: (batch, seq_q, seq_k) -> (batch, 1, seq_q, seq_k) -> (batch, n_heads, seq_q, seq_k)
             attn_mask = attention_mask.unsqueeze(1).expand(batch_size, self.n_heads, attention_mask.size(1), attention_mask.size(2))
 
         attention_output, attention_scores = ScaledProductAttention(self.d_k).forward(q_s, k_s, v_s, attn_mask)
@@ -189,7 +190,7 @@ class MaskedDecoderLayer(nn.Module):
         self.dec_self_attn = MultiHeadAttention(d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v)
         self.pos_ffn = PoswiseFeedForwardNet(d_model=d_model, d_ff=d_ff)
 
-    def forward(self, dec_inputs, dec_self_attn_mask):
+    def forward(self, dec_inputs, dec_self_attn_mask): # input shapes: (batch_size, seq_len, d_model), (batch_size, seq_len, seq_len)
         dec_outputs, dec_self_attn = self.dec_self_attn(dec_inputs, dec_inputs, dec_inputs, dec_self_attn_mask)
         dec_outputs = self.pos_ffn(dec_outputs)
         return dec_outputs, dec_self_attn
@@ -206,16 +207,20 @@ class MaskedDecoder(nn.Module):
         self.layers = nn.ModuleList(layers)
 
     def forward(self, dec_inputs):
-        dec_outputs = self.tgt_emb(dec_inputs)
-        dec_outputs = self.pos_emb(dec_outputs)
+        dec_outputs = self.tgt_emb(dec_inputs) # shape: (batch_size, seq_len) -> (batch_size, seq_len, d_model)
+        dec_outputs = self.pos_emb(dec_outputs) # shape: (batch_size, seq_len, d_model) -> (batch_size, seq_len, d_model)
         dec_self_attn_pad_mask = get_attn_pad_mask(dec_inputs, dec_inputs, self.pad_index)
         dec_self_attn_subsequent_mask = get_attn_subsequent_mask(dec_inputs)
-        dec_self_attn_mask = dec_self_attn_pad_mask | dec_self_attn_subsequent_mask
+        dec_self_attn_mask = dec_self_attn_pad_mask | dec_self_attn_subsequent_mask # shape: (batch_size, seq_len, seq_len)
         dec_self_attns = []
         for layer in self.layers:
             dec_outputs, dec_self_attn = layer(dec_outputs, dec_self_attn_mask)
             dec_self_attns.append(dec_self_attn)
-        dec_self_attns = torch.stack(dec_self_attns).permute([1, 0, 2, 3, 4])
+        
+        # torch.stack -> stack up all the layers output dec_self_attn and add new dimension (n_layer)
+
+        # (n_layers, batch_size, n_heads, seq_len, seq_len) -> (batch_size, n_layers, n_heads, seq_len, seq_len) 
+        dec_self_attns = torch.stack(dec_self_attns).permute([1, 0, 2, 3, 4]) # transform the dimension 1 and 0
         return dec_outputs, dec_self_attns
 
 class GPTModel(nn.Module):
