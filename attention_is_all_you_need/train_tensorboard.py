@@ -47,6 +47,7 @@ def compute_attention_entropy(attention_weights):
     attention_weights = attention_weights + eps
     
     # Compute entropy along the last dimension (key dimension)
+    # this is Shannon entropy
     entropy = -torch.sum(attention_weights * torch.log(attention_weights), dim=-1)
     return entropy  # (n_heads, seq_len)
 
@@ -125,6 +126,9 @@ def train(args):
         token_ids = token_ids[:args.max_tokens]
         print(f"Truncated to {args.max_tokens} tokens for memory efficiency")
 
+    # Prepare dataset for language modeling
+    # For a sentence like "I love cats", x will be ["I"], y will be ["love"]
+    # For block_size > 1, x is a window of tokens, y is the next token(s)
     dataset = LMWindowDataset(token_ids, block_size=args.block_size, pad_index=pad_index, stride=args.stride)
     # Use more workers for faster data loading
     loader = DataLoader(
