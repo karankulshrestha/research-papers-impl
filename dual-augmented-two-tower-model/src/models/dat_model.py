@@ -96,7 +96,7 @@ class DATModel(nn.Module):
                 idx = torch.arange(s, min(N, s + batch_size), device=device, dtype=torch.long)
                 ev = self.v_emb(idx)
                 av = self.a_v(idx)
-                zv = torch.concat([ev, av], dim=1)
+                zv = torch.cat([ev, av], dim=1)
                 pv = self.item_tower(zv)
                 pv = F.normalize(pv, dim=1)
                 embs.append(pv.cpu())

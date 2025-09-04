@@ -1,0 +1,14 @@
+seed: 42
+data_dir: data/processed
+save_dir: checkpoints
+emb_dim: 32
+aug_dim: 32
+tower_hidden: [256,128,32]
+batch_size: 256
+neg_samples: 4
+lr: 0.001
+epochs: 20
+lambda_u: 0.5
+lambda_v: 0.5
+lambda_ca: 1.0
+eval_k: [10, 50, 100]
